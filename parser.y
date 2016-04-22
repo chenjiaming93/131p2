@@ -176,7 +176,10 @@ TypeNonArray	:	T_Void	{$$ = Type::voidType;}
             	|	T_Mat4	{$$ = Type::mat4Type;}
             	;
 
-Exp		:   T_IntConstant   {$$ = new IntConstant(@1, $1);}
+Exp		:	T_IntConstant	{$$ = new IntConstant(@1, $1);}
+     		|	T_FloatConstant	{$$ = new FloatConstant(@1, $1);}
+		|	T_BoolConstant	{$$ = new BoolConstant(@1, $1);}
+		;
 %%
 
 /* The closing %% above marks the end of the Rules section and the beginning
