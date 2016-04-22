@@ -44,11 +44,16 @@ void yyerror(const char *msg); // standard error-handling routine
     float floatConstant;
     char identifier[MaxIdentLen+1]; // +1 for terminating null
     Decl * decl;
-    List<Decl*> * declList;
+    FnDecl *fndecl;
     VarDecl * vardecl;
     Type * type;
-    TypeQualifier * tq;
-    Expr * expr;   
+    TypeQualifier *tq;
+    Expr * expr;
+    Stmt * stmt; 
+    StmtBlock *stmtblock;
+    List<Decl*> * declList;
+    List<VarDecl*> * vdclist;
+    List<Stmt*> *stmtList; 
 }
 
 
@@ -95,9 +100,12 @@ void yyerror(const char *msg); // standard error-handling routine
 %type <vardecl>   VarDecl
 %type <type>      TypeSpecifier
 %type <tq>  	  TypeQualifier
-%type <type>	  TypeNonArray
 %type <expr>	  Exp
-/*%type <expr>	  ConExp*/
+%type <fndecl>	  FunctionPrototype
+%type <fndecl>	  FunctionDeclarator
+%type <fndecl>	  FunctionHeader
+%type <fndecl>	  Function
+%type <stmtblock> CompoundWithNoScope
 
 
 %%
@@ -124,8 +132,12 @@ DeclList  	 :    DeclList Decl        { ($$=$1)->Append($2); }
           	 ;
 
 Decl		:    VarDecl T_Semicolon{$$ = $1;}  
-      		|    /*FunctionPrototype T_Semicolon {$$ = $1;}*/                                                 
+      		|    FunctionPrototype T_Semicolon {$$ = $1;}
+		|    Function	{$$=$1;}					
           	;
+
+Function	:    FunctionPrototype CompoundWithNoScope{($$=$1)->SetFunctionBody($2);}
+	 	;
 
 VarDecl		:	TypeSpecifier T_Identifier	
 		{
@@ -142,6 +154,18 @@ VarDecl		:	TypeSpecifier T_Identifier
 			Identifier *i=new Identifier(@3,$3);
 			$$=new VarDecl(i,$2,$1,$5);
 		}
+		|	TypeQualifier TypeSpecifier T_Identifier T_LeftBracket Exp T_RightBracket
+		{
+			Identifier *i=new Identifier(@3,$3);
+			Type * t=new ArrayType(@2,$2);
+			$$=new VarDecl(i,t,$1);
+		} 
+		|	TypeSpecifier  T_Identifier T_LeftBracket Exp T_RightBracket
+		{
+			Identifier *i=new Identifier(@2,$2);
+			Type * t=new ArrayType(@1,$1);
+			$$=new VarDecl(i,t);
+		}
 	  	;
 
 TypeQualifier	:	T_Const	{$$ = TypeQualifier::constTypeQualifier;}    
@@ -150,11 +174,7 @@ TypeQualifier	:	T_Const	{$$ = TypeQualifier::constTypeQualifier;}
 		|	T_Uniform	{$$ = TypeQualifier::uniformTypeQualifier;} 
 		;
 
-TypeSpecifier   :   TypeNonArray {$$ = $1;}
-                /*|   TypeNonArray T_LeftBracket  T_RightBracket{$$ = $1;}*/
-           	;
-
-TypeNonArray	:	T_Void	{$$ = Type::voidType;}
+TypeSpecifier   :	T_Void	{$$ = Type::voidType;}
 	        |	T_Float	{$$ = Type::floatType;}
 		|	T_Int	{$$ = Type::intType;}
 		|	T_Uint	{$$ = Type::uintType;}  
@@ -176,9 +196,33 @@ TypeNonArray	:	T_Void	{$$ = Type::voidType;}
             	|	T_Mat4	{$$ = Type::mat4Type;}
             	;
 
+FunctionPrototype	:	FunctionDeclarator T_RightParen	{$$=$1;}
+			;
+
+FunctionDeclarator	:	FunctionHeader	{$$=$1;}	
+  			/*|	FunctionHeadWithParam {$$=$1;}*/		   
+			;
+
+FunctionHeader		:	TypeSpecifier T_Identifier T_LeftParen 
+			{
+				Identifier* i=new Identifier(@2,$2);
+				List<VarDecl*> *p=new List<VarDecl*>;
+				$$=new FnDecl(i,$1,p);
+			}
+			;
+
+CompoundWithNoScope	:	T_LeftBrace T_RightBrace
+		    	{
+				List<VarDecl*> *d=new List<VarDecl*>;
+				List<Stmt*> *s=new List<Stmt*>;
+				$$=new StmtBlock(d,s); 
+			}
+		    		
+		    	;
 Exp		:	T_IntConstant	{$$ = new IntConstant(@1, $1);}
      		|	T_FloatConstant	{$$ = new FloatConstant(@1, $1);}
 		|	T_BoolConstant	{$$ = new BoolConstant(@1, $1);}
+		|	T_LeftParen Exp T_RightParen	{$$=$2;}
 		;
 %%
 
