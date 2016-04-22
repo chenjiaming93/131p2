@@ -43,8 +43,12 @@ void yyerror(const char *msg); // standard error-handling routine
     bool boolConstant;
     float floatConstant;
     char identifier[MaxIdentLen+1]; // +1 for terminating null
-    Decl *decl;
-    List<Decl*> *declList;
+    Decl * decl;
+    List<Decl*> * declList;
+    VarDecl * vardecl;
+    Type * type;
+    TypeQualifier * tq;
+    Expr * expr;   
 }
 
 
@@ -85,9 +89,16 @@ void yyerror(const char *msg); // standard error-handling routine
  * of the union named "declList" which is of type List<Decl*>.
  * pp2: You'll need to add many of these of your own.
  */
-%type <declList>  DeclList
+%type <declList>  TranslationUnit
+/*%type <declList>  DeclList*/
 %type <decl>      Decl
-
+%type <vardecl>   VarDecl
+%type <type>      TypeSpecifier
+%type <tq>  	  TypeQualifier
+%type <type>	  TypeNonArray
+%type <expr>	  Exp
+/*%type <expr>	  ConExp*/
+%type <decl>	  ExternalDecl
 
 
 %%
@@ -97,7 +108,7 @@ void yyerror(const char *msg); // standard error-handling routine
  * %% markers which delimit the Rules section.
 
  */
-Program   :    DeclList            {
+Program   :    TranslationUnit     {
                                       @1;
                                       /* pp2: The @1 is needed to convince
                                        * yacc to set up yylloc. You can remove
@@ -109,18 +120,66 @@ Program   :    DeclList            {
                                     }
           ;
 
-DeclList  :    DeclList Decl        { ($$=$1)->Append($2); }
-          |    Decl                 { ($$ = new List<Decl*>)->Append($1); }
-          ;
+TranslationUnit  :    TranslationUnit ExternalDecl        { ($$=$1)->Append($2); }
+		 |    ExternalDecl                 { ($$ = new List<Decl*>)->Append($1); }
+          	 ;
 
-Decl      :    T_Int T_Identifier T_Semicolon {
-                                                 // replace it with your implementation
-                                                 Identifier *id = new Identifier(@2, $2);
-                                                 $$ = new VarDecl(id, Type::intType);
-                                              }
-          ;
+Decl		:    VarDecl T_Semicolon{$$ = $1;}  
+      		|    /*FunctionPrototype T_Semicolon {$$ = $1;}*/                                                 
+          	;
 
+VarDecl		:	TypeSpecifier T_Identifier	
+		{
+			Identifier *i=new Identifier(@2,$2);
+			$$=new VarDecl(i,$1);
+		}
+	 	| 	TypeSpecifier T_Identifier T_Equal Exp
+		{
+			Identifier *i=new Identifier(@2,$2);
+			$$=new VarDecl(i,$1,$4);
+		}
+	  	|	TypeQualifier TypeSpecifier T_Identifier T_Equal Exp
+		{
+			Identifier *i=new Identifier(@3,$3);
+			$$=new VarDecl(i,$2,$1,$5);
+		}
+	  	;
 
+TypeQualifier	:	T_Const	{$$ = TypeQualifier::constTypeQualifier;}    
+		|	T_In	{$$ = TypeQualifier::inTypeQualifier;} 
+		|	T_Out	{$$ = TypeQualifier::outTypeQualifier;} 
+		|	T_Uniform	{$$ = TypeQualifier::uniformTypeQualifier;} 
+		;
+
+TypeSpecifier   :   TypeNonArray {$$ = $1;}
+                /*|   TypeNonArray T_LeftBracket  T_RightBracket{$$ = $1;}*/
+           	;
+
+TypeNonArray	:	T_Void	{$$ = Type::voidType;}
+	        |	T_Float	{$$ = Type::floatType;}
+		|	T_Int	{$$ = Type::intType;}
+		|	T_Uint	{$$ = Type::uintType;}  
+            	|	T_Bool	{$$ = Type::boolType;}
+            	|	T_Vec2	{$$ = Type::vec2Type;}
+            	|	T_Vec3	{$$ = Type::vec3Type;}
+            	|	T_Vec4	{$$ = Type::vec4Type;}
+            	|	T_Bvec2	{$$ = Type::bvec2Type;}
+            	|	T_Bvec3	{$$ = Type::bvec3Type;}
+            	|	T_Bvec4	{$$ = Type::bvec4Type;}
+            	|	T_Ivec2	{$$ = Type::ivec2Type;}
+            	|	T_Ivec3	{$$ = Type::ivec3Type;}
+            	|	T_Ivec4	{$$ = Type::ivec4Type;}
+		|	T_Uvec2	{$$ = Type::uvec2Type;}
+            	|	T_Uvec3	{$$ = Type::uvec3Type;}
+            	|	T_Uvec4	{$$ = Type::uvec4Type;}		
+            	|	T_Mat2	{$$ = Type::mat2Type;}
+            	|	T_Mat3	{$$ = Type::mat3Type;}
+            	|	T_Mat4	{$$ = Type::mat4Type;}
+            	;
+
+ExternalDecl	:	 Decl  {$$ = $1;}
+                ; 
+Exp		:   T_IntConstant   {$$ = new IntConstant(@1, $1);}
 %%
 
 /* The closing %% above marks the end of the Rules section and the beginning
