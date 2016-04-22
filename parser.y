@@ -89,8 +89,8 @@ void yyerror(const char *msg); // standard error-handling routine
  * of the union named "declList" which is of type List<Decl*>.
  * pp2: You'll need to add many of these of your own.
  */
-%type <declList>  TranslationUnit
-/*%type <declList>  DeclList*/
+
+%type <declList>  DeclList
 %type <decl>      Decl
 %type <vardecl>   VarDecl
 %type <type>      TypeSpecifier
@@ -98,7 +98,6 @@ void yyerror(const char *msg); // standard error-handling routine
 %type <type>	  TypeNonArray
 %type <expr>	  Exp
 /*%type <expr>	  ConExp*/
-%type <decl>	  ExternalDecl
 
 
 %%
@@ -108,7 +107,7 @@ void yyerror(const char *msg); // standard error-handling routine
  * %% markers which delimit the Rules section.
 
  */
-Program   :    TranslationUnit     {
+Program   :    DeclList     {
                                       @1;
                                       /* pp2: The @1 is needed to convince
                                        * yacc to set up yylloc. You can remove
@@ -120,8 +119,8 @@ Program   :    TranslationUnit     {
                                     }
           ;
 
-TranslationUnit  :    TranslationUnit ExternalDecl        { ($$=$1)->Append($2); }
-		 |    ExternalDecl                 { ($$ = new List<Decl*>)->Append($1); }
+DeclList  	 :    DeclList Decl        { ($$=$1)->Append($2); }
+		 |    Decl                 { ($$ = new List<Decl*>)->Append($1); }
           	 ;
 
 Decl		:    VarDecl T_Semicolon{$$ = $1;}  
@@ -177,8 +176,6 @@ TypeNonArray	:	T_Void	{$$ = Type::voidType;}
             	|	T_Mat4	{$$ = Type::mat4Type;}
             	;
 
-ExternalDecl	:	 Decl  {$$ = $1;}
-                ; 
 Exp		:   T_IntConstant   {$$ = new IntConstant(@1, $1);}
 %%
 
