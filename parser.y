@@ -47,6 +47,7 @@ void yyerror(const char *msg); // standard error-handling routine
     FnDecl *fndecl;
     VarDecl * vardecl;
     Type * type;
+    Identifier* id;
     TypeQualifier *tq;
     Expr * expr;
     Stmt * stmt;
@@ -56,6 +57,7 @@ void yyerror(const char *msg); // standard error-handling routine
     List<VarDecl*> * vdclist;
     List<Stmt*> *stmtList; 
     struct{List<VarDecl*> * d; List<Stmt*> * s;} stats;
+    struct{List<Expr*>* args;Identifier* i;}fnc;
 }
 
 
@@ -134,7 +136,10 @@ void yyerror(const char *msg); // standard error-handling routine
 %type <expr>	  EqExpr
 %type <expr>	  AssignExpr
 %type <expr>	  UnaryExpr
-
+%type <expr>	  FunctionCall
+%type <id>	  FunctionCallNoParam
+%type <fnc>	  FunctionCallParam
+%type <id>	  FunctionId
 
 
 %%
@@ -398,7 +403,7 @@ UnaryExpr		:	PostExpr	{$$=$1;}
 
 PostExpr		:   	PriExpr		{$$=$1;}
 			|	PostExpr T_LeftBracket Exp T_RightBracket {$$=new ArrayAccess(@1, $1, $3);}
-			/*|	FuncCall	{$$=$1;}*/
+			|	FunctionCall	{$$=$1;}
 			|	PostExpr T_Dot T_Identifier	{$$=new FieldAccess($1,new Identifier(@3, $3));}
 			|	PostExpr T_Inc	{$$ = new PostfixExpr($1, new Operator(@2, "++"));}
 			|	PostExpr T_Dec	{$$ = new PostfixExpr($1, new Operator(@2, "++"));}
@@ -413,6 +418,48 @@ PriExpr			:	T_IntConstant	{$$ = new IntConstant(@1, $1);}
 			}
 			;
 
+FunctionCall		:	FunctionCallParam T_RightParen	{$$=new Call(@1,NULL,$1.i,$1.args);}
+	      		|	FunctionCallNoParam T_RightParen{$$=new Call(@1,NULL,$1,new List<Expr*>());}
+			;
+
+FunctionCallNoParam	:	FunctionId T_LeftParen {$$=$1;}
+		    	|	FunctionId T_LeftParen T_Void {$$=$1;}	
+	
+			;
+
+FunctionCallParam	:	FunctionId T_LeftParen AssignExpr 
+		  	{
+				$$.args=new List<Expr*>();
+				$$.args->Append($3);
+				$$.i=$1;
+			}	
+		  	|	FunctionCallParam T_Comma AssignExpr
+					
+			{
+				$$=$1;
+				$$.args->Append($3);
+			}
+FunctionId		:	T_Float	{$$ = new Identifier(@1, "float");}
+			|	T_Int	{$$ = new Identifier(@1, "int");}
+			|	T_Uint	{$$ = new Identifier(@1, "uint");}
+            		|	T_Bool	{$$ = new Identifier(@1, "bool");}
+            		|	T_Vec2	{$$ = new Identifier(@1, "vec2");}
+            		|	T_Vec3	{$$ = new Identifier(@1, "vec3");}
+            		|	T_Vec4	{$$ = new Identifier(@1, "vec4");}
+            		|	T_Bvec2	{$$ = new Identifier(@1, "bvec2");}
+            		|	T_Bvec3	{$$ = new Identifier(@1, "bvec3");}
+            		|	T_Bvec4	{$$ = new Identifier(@1, "bvec4");}
+            		|	T_Ivec2	{$$ = new Identifier(@1, "ivec2");}
+            		|	T_Ivec3	{$$ = new Identifier(@1, "ivec3");}
+            		|	T_Ivec4	{$$ = new Identifier(@1, "ivec4");}
+			|	T_Uvec2 {$$ = new Identifier(@1, "uvec2");}
+            		|	T_Uvec3 {$$ = new Identifier(@1, "uvec3");}
+            		|	T_Uvec4	{$$ = new Identifier(@1, "uvec4");}	
+            		|	T_Mat2	{$$ = new Identifier(@1, "mat2");}
+            		|	T_Mat3	{$$ = new Identifier(@1, "mat3");}
+            		|	T_Mat4	{$$ = new Identifier(@1, "mat4");}
+			|	T_Identifier	{$$ = new Identifier(@1, $1);}
+			;	   
 %%
 
 /* The closing %% above marks the end of the Rules section and the beginning
