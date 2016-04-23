@@ -49,11 +49,13 @@ void yyerror(const char *msg); // standard error-handling routine
     Type * type;
     TypeQualifier *tq;
     Expr * expr;
-    Stmt * stmt; 
+    Stmt * stmt;
+    Operator *opt; 
     StmtBlock *stmtblock;
     List<Decl*> * declList;
     List<VarDecl*> * vdclist;
     List<Stmt*> *stmtList; 
+    struct{List<VarDecl*> * d; List<Stmt*> * s;} stats;
 }
 
 
@@ -98,14 +100,41 @@ void yyerror(const char *msg); // standard error-handling routine
 %type <declList>  DeclList
 %type <decl>      Decl
 %type <vardecl>   VarDecl
+%type <vardecl>   ParamDecl
+%type <vdclist>   ParamDeclList
 %type <type>      TypeSpecifier
 %type <tq>  	  TypeQualifier
 %type <expr>	  Exp
+%type <expr>	  PriExpr
+
 %type <fndecl>	  FunctionPrototype
 %type <fndecl>	  FunctionDeclarator
 %type <fndecl>	  FunctionHeader
+%type <fndecl>    FunctionHeaderWithParam
 %type <fndecl>	  Function
-%type <stmtblock> CompoundWithNoScope
+%type <stmtblock> CompoundScope
+%type <stats>     Statements
+%type <stmt>	  Statement
+%type <stmt>	  SimpleStatement
+%type <stmt>	  SelectionStatement
+%type <stmt>	  IterationStatement
+%type <stmt>	  JumpStatement
+%type <expr>	  ForInit
+%type <expr>	  ForCond
+%type <expr>	  ForStep
+%type <expr>	  CondExpr
+%type <expr>	  RelationExpr
+%type <expr>	  AddExpr
+%type <expr>	  MulExpr
+%type <expr>	  PostExpr
+%type <expr>	  LogicOrExpr
+%type <expr>	  LogicAndExpr
+%type <expr>	  ShiftExpr
+%type <opt>	  AssignOp
+%type <expr>	  EqExpr
+%type <expr>	  AssignExpr
+%type <expr>	  UnaryExpr
+
 
 
 %%
@@ -136,7 +165,7 @@ Decl		:    VarDecl T_Semicolon{$$ = $1;}
 		|    Function	{$$=$1;}					
           	;
 
-Function	:    FunctionPrototype CompoundWithNoScope{($$=$1)->SetFunctionBody($2);}
+Function	:    FunctionPrototype CompoundScope{($$=$1)->SetFunctionBody($2);}
 	 	;
 
 VarDecl		:	TypeSpecifier T_Identifier	
@@ -154,13 +183,13 @@ VarDecl		:	TypeSpecifier T_Identifier
 			Identifier *i=new Identifier(@3,$3);
 			$$=new VarDecl(i,$2,$1,$5);
 		}
-		|	TypeQualifier TypeSpecifier T_Identifier T_LeftBracket Exp T_RightBracket
+		|	TypeQualifier TypeSpecifier T_Identifier T_LeftBracket PriExpr T_RightBracket
 		{
 			Identifier *i=new Identifier(@3,$3);
 			Type * t=new ArrayType(@2,$2);
 			$$=new VarDecl(i,t,$1);
 		} 
-		|	TypeSpecifier  T_Identifier T_LeftBracket Exp T_RightBracket
+		|	TypeSpecifier  T_Identifier T_LeftBracket PriExpr T_RightBracket
 		{
 			Identifier *i=new Identifier(@2,$2);
 			Type * t=new ArrayType(@1,$1);
@@ -200,7 +229,7 @@ FunctionPrototype	:	FunctionDeclarator T_RightParen	{$$=$1;}
 			;
 
 FunctionDeclarator	:	FunctionHeader	{$$=$1;}	
-  			/*|	FunctionHeadWithParam {$$=$1;}*/		   
+  			|	FunctionHeaderWithParam {$$=$1;}		   
 			;
 
 FunctionHeader		:	TypeSpecifier T_Identifier T_LeftParen 
@@ -209,21 +238,181 @@ FunctionHeader		:	TypeSpecifier T_Identifier T_LeftParen
 				List<VarDecl*> *p=new List<VarDecl*>;
 				$$=new FnDecl(i,$1,p);
 			}
+			|	TypeQualifier TypeSpecifier T_Identifier T_LeftParen
+			{
+				Identifier* i=new Identifier(@3,$3);
+				List<VarDecl*> *p=new List<VarDecl*>;
+				$$=new FnDecl(i,$2,$1,p);
+			}
 			;
 
-CompoundWithNoScope	:	T_LeftBrace T_RightBrace
+FunctionHeaderWithParam	:	TypeSpecifier T_Identifier T_LeftParen ParamDeclList
+			{
+				Identifier* i=new Identifier(@2,$2);
+				List<VarDecl*> *p=new List<VarDecl*>;
+				$$=new FnDecl(i,$1,$4);
+				
+			}
+			|	TypeQualifier TypeSpecifier T_Identifier T_LeftParen  ParamDeclList
+			{
+				Identifier* i=new Identifier(@3,$3);
+				List<VarDecl*> *p=new List<VarDecl*>;
+				$$=new FnDecl(i,$2,$1,$5);
+			}		
+			;
+
+ParamDeclList  	 	:    ParamDeclList ParamDecl        { ($$=$1)->Append($2); }
+		 	|    ParamDecl                 	    { ($$ = new List<VarDecl*>)->Append($1); }
+          	 	;	
+
+ParamDecl		:    VarDecl T_Comma		    {$$ = $1;}
+	   		|    VarDecl			    {$$ = $1;}
+	  		; 
+
+CompoundScope	:	T_LeftBrace T_RightBrace
 		    	{
 				List<VarDecl*> *d=new List<VarDecl*>;
 				List<Stmt*> *s=new List<Stmt*>;
 				$$=new StmtBlock(d,s); 
 			}
-		    		
-		    	;
-Exp		:	T_IntConstant	{$$ = new IntConstant(@1, $1);}
-     		|	T_FloatConstant	{$$ = new FloatConstant(@1, $1);}
-		|	T_BoolConstant	{$$ = new BoolConstant(@1, $1);}
-		|	T_LeftParen Exp T_RightParen	{$$=$2;}
-		;
+		    	|	T_LeftBrace Statements T_RightBrace  
+			{	
+				List<VarDecl*> *d=$2.d;
+				List<Stmt*> *s=$2.s;
+				$$=new StmtBlock(d,s); 
+				
+			}
+			;	
+		    	
+Statements		: 	Statement      	
+	    		{
+				$$.d = new List<VarDecl*>(); 
+				$$.s = new List<Stmt*>();
+				$$.s->Append($1);
+			}
+			| 	 VarDecl T_Semicolon 	
+	    		{
+				$$.d = new List<VarDecl*>(); 
+				$$.s = new List<Stmt*>();	
+				$$.d->Append($1);
+			}
+			|	Statements Statement
+			{
+				$$=$1;
+				$$.s->Append($2);
+			}
+	    		|	Statements VarDecl T_Semicolon
+			{
+				$$=$1;
+				$$.d->Append($2);
+			}				
+			;
+
+Statement		:	SimpleStatement	{$$=$1;}
+	   		|	CompoundScope{$$=$1;}
+			;
+
+SimpleStatement		:	IterationStatement{$$=$1;}
+			|       SelectionStatement{$$=$1;}
+			|	JumpStatement{$$=$1;}
+			|	Exp T_Semicolon {$$=$1;}
+	       		;
+
+IterationStatement	:	T_While T_LeftParen Exp T_RightParen Statement {$$=new WhileStmt($3, $5);}
+		   	|	T_Do Statement T_While  T_LeftParen Exp T_RightParen T_Semicolon {$$=new DoWhileStmt($2, $5);}	
+	   		|	T_For T_LeftParen ForInit ForCond ForStep T_RightParen Statement{$$=new ForStmt($3,$4,$5,$7);}	   
+		   	;
+
+ForInit			:	T_Semicolon {$$ = new EmptyExpr();}
+			|	Exp T_Semicolon {$$ = $1;}
+			;
+
+ForCond			:	Exp {$$=$1;}
+	  		;
+
+ForStep			:	T_Semicolon Exp	{$$=$2;}
+	  		|	T_Semicolon {$$ = new EmptyExpr();}
+	  		;
+
+SelectionStatement	:	T_If T_LeftParen Exp T_RightParen Statement T_Else Statement {$$=new IfStmt($3,$5,$7);}
+    			|	T_If T_LeftParen Exp T_RightParen Statement	{$$=new IfStmt($3,$5,NULL);} 		   
+		   	;
+
+JumpStatement		:	T_Return Exp T_Semicolon{{$$=new ReturnStmt(@1, $2);}}
+	       		|	T_Break T_Semicolon {$$=new BreakStmt(@1);}	
+			;
+
+Exp			:	T_LeftParen Exp T_RightParen	{$$=$2;}
+			|	AssignExpr	{$$=$1;}
+			;
+
+AssignExpr		:	CondExpr	{$$=$1;}
+    			|	UnaryExpr AssignOp Exp	{$$=new AssignExpr($1,$2,$3);}
+			;
+
+CondExpr		:	LogicOrExpr		{$$=$1;}
+  			;
+
+LogicOrExpr		:	LogicAndExpr		{$$=$1;}
+			|	LogicOrExpr T_Or LogicAndExpr	{$$ = new LogicalExpr($1, new Operator(@2, "||"), $3);}
+			;
+
+LogicAndExpr		:	EqExpr		{$$=$1;}
+	  		|	LogicAndExpr T_And EqExpr	{$$ = new LogicalExpr($1, new Operator(@2, "@@"), $3);}
+			;
+EqExpr			: 	RelationExpr	{$$=$1;}
+	 		|	EqExpr	T_EQ	RelationExpr	{$$ = new LogicalExpr($1, new Operator(@2, "=="), $3);}
+			|	EqExpr	T_NE	RelationExpr	{$$ = new LogicalExpr($1, new Operator(@2, "!="), $3);}
+			;
+
+RelationExpr		:	ShiftExpr	{$$=$1;}
+			|	RelationExpr T_LeftAngle ShiftExpr	{$$ = new RelationalExpr($1, new Operator(@2,"<"), $3);}
+			|	RelationExpr T_RightAngle ShiftExpr	{$$ = new RelationalExpr($1, new Operator(@2,">"), $3);}
+			|	RelationExpr T_LessEqual ShiftExpr	{$$ = new RelationalExpr($1, new Operator(@2,"<="), $3);}
+			|	RelationExpr T_GreaterEqual ShiftExpr	{$$ = new RelationalExpr($1, new Operator(@2,">="), $3);}
+			;
+
+ShiftExpr		:	AddExpr		{$$=$1;}
+	   		;
+
+AddExpr			:	MulExpr		{$$=$1;}
+	  		|	AddExpr	T_Plus	MulExpr	{$$ = new ArithmeticExpr($1, new Operator(@2, "+"), $3);}	
+			|	AddExpr	T_Dash	MulExpr	{$$ = new ArithmeticExpr($1, new Operator(@2, "-"), $3);}
+			;
+
+MulExpr			:	UnaryExpr	{$$=$1;}
+	  		|	MulExpr	T_Star	UnaryExpr	{$$ = new ArithmeticExpr($1, new Operator(@2, "*"), $3);}
+			|	MulExpr	T_Slash	UnaryExpr	{$$ = new ArithmeticExpr($1, new Operator(@2, "/"), $3);}
+			;
+	
+AssignOp		:	T_Equal		{$$ = new Operator(@1, "=");}
+	  		|	T_MulAssign 	{$$ = new Operator(@1, "*=");}
+			|	T_DivAssign	{$$ = new Operator(@1, "/=");}
+			|	T_AddAssign	{$$ = new Operator(@1, "+=");}
+			|	T_SubAssign	{$$ = new Operator(@1, "-=");}
+			;
+UnaryExpr		:	PostExpr	{$$=$1;}
+	   		|	T_Inc UnaryExpr	{$$ = new ArithmeticExpr(new Operator(@1, "++"), $2);}
+			|	T_Dec UnaryExpr	{$$ = new ArithmeticExpr(new Operator(@1, "--"), $2);}
+			;
+
+PostExpr		:   	PriExpr		{$$=$1;}
+			|	PostExpr T_LeftBracket Exp T_RightBracket {$$=new ArrayAccess(@1, $1, $3);}
+			/*|	FuncCall	{$$=$1;}*/
+			|	PostExpr T_Dot T_Identifier	{$$=new FieldAccess($1,new Identifier(@3, $3));}
+			|	PostExpr T_Inc	{$$ = new PostfixExpr($1, new Operator(@2, "++"));}
+			|	PostExpr T_Dec	{$$ = new PostfixExpr($1, new Operator(@2, "++"));}
+			;  
+
+PriExpr			:	T_IntConstant	{$$ = new IntConstant(@1, $1);}
+			|	T_FloatConstant	{$$ = new FloatConstant(@1, $1);}
+			|	T_BoolConstant	{$$ = new BoolConstant(@1, $1);}
+			|	T_Identifier	
+			{	Identifier * i=new Identifier(@1, $1);
+				$$=new VarExpr(@1, i);
+			}
+			;
+
 %%
 
 /* The closing %% above marks the end of the Rules section and the beginning

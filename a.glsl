@@ -1,3 +1,8 @@
-int x=5;
-int c=1.5;
-bool x=true;
+int a=1;
+void a()
+{
+  for (;333;){}
+  a=7;
+  break;
+  return sx;
+}
